@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>GIS Web Application</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/chroma-js/2.1.0/chroma.min.js"></script>
+    <!-- Adding chroma.js for color scale -->
+    <style>
+        #map {
+            height: 500px;
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Upload Geospatial Data</h1>
+    <form id="uploadForm" enctype="multipart/form-data">
+        <input type="file" id="fileInput" accept=".geojson">
+        <input type="button" value="Upload" onclick="uploadFile()">
+    </form>
+    <div id="regressionResults"></div>
+    <div id="map"></div>
+    
+    <script>
+        var map = L.map('map').setView([51.505, -0.09], 13);
+
+        // Add base layer
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            maxZoom: 19,
+        }).addTo(map);
+
+        // Function to create color scale
+        function getColorScale(property, min, max) {
+            return chroma.scale(['green', 'orange', 'red']).domain([min, max]);
+        }
+
+        function style(feature, property, colorScale) {
+            return {
+                fillColor: colorScale(feature.properties[property]),
+                weight: 2,
+                opacity: 1,
+                color: 'black',
+                fillOpacity: 0.6
+            };
+        }
+
+        var layersControl = {};  // To hold different layers
+
+        function uploadFile() {
+            var fileInput = document.getElementById('fileInput');
+            var file = fileInput.files[0];
+
+            if (!file) {
+                alert('No file selected.');
+                return;
+            }
+
+            var formData = new FormData();
+            formData.append('file', file);
+
+            var xhr = new XMLHttpRequest();
+            xhr.open('POST', '/upload', true);
+
+            xhr.onload = function() {
+                if (xhr.status === 200) {
+                    var response = JSON.parse(xhr.responseText);
+                    if (response.success) {
+                        var filename = response.filename;
+                        var beta = response.beta;
+                        var intercept = response.intercept;
+                        
+                        // Display regression results
+                        document.getElementById('regressionResults').innerHTML = '<p>One unit increment in Energy Efficiency contributes to ' + beta.toFixed(2) + ' increment in prices per square meter </p>';
+
+                        fetchAndDisplayGeoJSON('/uploads/' + filename);
+                    } else {
+                        alert(response.error);
+                    }
+                } else {
+                    alert('Error uploading file');
+                }
+            };
+
+            xhr.send(formData);
+        }
+
+        function fetchAndDisplayGeoJSON(url) {
+            fetch(url)
+                .then(response => response.json())
+                .then(data => {
+                    var minEpc = Math.min(...data.features.map(f => f.properties.avg_epc));
+                    var maxEpc = Math.max(...data.features.map(f => f.properties.avg_epc));
+                    var minPrice = Math.min(...data.features.map(f => f.properties.avg_price));
+                    var maxPrice = Math.max(...data.features.map(f => f.properties.avg_price));
+
+                    var epcColorScale = getColorScale('avg_epc', 0, maxEpc - minEpc);
+                    var priceColorScale = getColorScale('avg_price', 0, maxPrice - minPrice);
+
+                    var avgEpcLayer = L.geoJSON(data, {
+                        style: function(feature) {
+                            return style(feature, 'avg_epc', epcColorScale);
+                        },
+                        onEachFeature: function(feature, layer) {
+                            layer.bindPopup("<b>Name:</b> " + feature.properties.name +
+                                "<br><b>Avg EPC:</b> " + feature.properties.avg_epc +
+                                "<br><b>Avg Price:</b> " + feature.properties.avg_price);
+                        }
+                    });
+
+                    var avgPriceLayer = L.geoJSON(data, {
+                        style: function(feature) {
+                            return style(feature, 'avg_price', priceColorScale);
+                        },
+                        onEachFeature: function(feature, layer) {
+                            layer.bindPopup("<b>Name:</b> " + feature.properties.name +
+                                "<br><b>Avg EPC:</b> " + feature.properties.avg_epc +
+                                "<br><b>Avg Price:</b> " + feature.properties.avg_price);
+                        }
+                    });
+
+                    layersControl = {
+                        'Avg EPC': avgEpcLayer,
+                        'Avg Price': avgPriceLayer
+                    };
+
+                    L.control.layers(null, layersControl).addTo(map);
+
+                    // Add default layer to map
+                    avgEpcLayer.addTo(map);
+
+                    // Fit map bounds to the uploaded GeoJSON data
+                    map.fitBounds(avgEpcLayer.getBounds());
+                })
+                .catch(error => console.log(error));
+        }
+    </script>
+</body>
+</html>
