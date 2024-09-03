@@ -91,9 +91,7 @@ gis_web_app/
 
 The application performs a simple linear regression analysis on the uploaded geospatial data to compute the relationship between `avg_price` and `avg_epc`. The regression model is based on the formula:
 
-\[
-\text{avg\_price} = \beta \times \text{avg\_epc} + \text{intercept}
-\]
+$$\mathrm{avg_price} = \beta \times \mathrm{avg_epc} + \mathrm{intercept}$$
 
 The computed values of `beta` and `intercept` are displayed on the web interface after a successful file upload.
 
